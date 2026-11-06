@@ -67,8 +67,22 @@ try {
     assert.equal(r.total, 0);
   });
 
+  await t('grepByModule 按模块聚合', async () => {
+    mkdirSync(join(root, 'system_core', 'init'), { recursive: true });
+    writeFileSync(join(root, 'system_core', 'init', 'service.cpp'), '// zygote_socket ref\n');
+    const r = await core.grepByModule({ root, pattern: 'zygote_socket', rgPath: core.defaultRgPath(homedir()), maxPerModule: 2 });
+    assert.equal(r.total, 1);
+    assert.equal(r.modules[0].name, 'system_core');
+    assert.match(r.modules[0].hits[0], /system_core\/init\/service\.cpp:1:/);
+  });
+
+  await t('grepByModule 支持 modules 过滤', async () => {
+    const r = await core.grepByModule({ root, pattern: 'zygote_socket', rgPath: core.defaultRgPath(homedir()), modules: ['frameworks_base'] });
+    assert.equal(r.total, 0);
+  });
+
   console.log('\n插件契约（假 ctx）');
-  await t('apply 注册 4 个工具', async () => {
+  await t('apply 注册 5 个工具', async () => {
     const registered = new Map();
     const ctx = {
       logger: () => ({ info() {}, warn() {} }),
@@ -77,7 +91,7 @@ try {
       tools: { register: (d) => { registered.set(d.name, d); return () => registered.delete(d.name); }, get: (n) => registered.get(n) },
     };
     plugin.apply(ctx, { rootDir: root });
-    assert.deepEqual([...registered.keys()].sort(), ['aosp_fetch', 'aosp_list', 'aosp_read', 'aosp_search']);
+    assert.deepEqual([...registered.keys()].sort(), ['aosp_fetch', 'aosp_grep', 'aosp_list', 'aosp_read', 'aosp_search']);
     const list = await registered.get('aosp_list').execute({});
     assert.match(list.content[0].text, /frameworks_base/);
     const res = await registered.get('aosp_search').execute({ pattern: 'cc_library', glob: '*.bp' });

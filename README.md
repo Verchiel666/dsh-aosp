@@ -21,6 +21,7 @@ packages/apps/*、system/core、bionic、build、external/* 等 100 个仓）。
 | `aosp_list` | 只读 | 列出已落地的模块（大小/文件数/来源 ref） |
 | `aosp_fetch` | 写盘 | 下载并解包一个项目；`ref` 可用分支或 tag（如 `android-14.0.0_r1`） |
 | `aosp_search` | 只读 | 用 ripgrep 在已落地源码里搜正则（可限定 `*.java`、带上下文） |
+| `aosp_grep` | 只读 | 跨模块正则：一次 rg，结果**按模块聚合**（"这东西在哪几个模块出现"） |
 | `aosp_read` | 只读 | 按行读源码文件（带行号，最多 400 行） |
 
 `aosp_fetch` 会走审批（写盘 + 可能几百 MB）。
@@ -31,6 +32,8 @@ packages/apps/*、system/core、bionic、build、external/* 等 100 个仓）。
 aosp_fetch   {"project":"frameworks/base"}
 aosp_fetch   {"project":"packages/apps/Settings","ref":"android-14.0.0_r1"}
 aosp_search  {"pattern":"class ActivityManagerService","glob":"*.java"}
+aosp_grep    {"pattern":"zygote_socket","maxPerModule":3}          # 按模块聚合
+aosp_grep    {"pattern":"IPCThreadState","glob":"*.cpp","modules":["system_core"]}
 aosp_read    {"path":"frameworks_base/services/core/java/com/android/server/am/ActivityManagerService.java","offset":520,"limit":40}
 ```
 
@@ -56,9 +59,9 @@ aosp_read    {"path":"frameworks_base/services/core/java/com/android/server/am/A
 ## 测试
 
 ```sh
-node dev/test.mjs                 # 16 项离线
-DSH_AOSP_NET=1 node dev/test.mjs  # 17 项，含一次真下载（external/zlib）
-node ../host-test/rt-aosp.mjs     # 9 项：引擎真 cordis 4.0.5 冒烟
+node dev/test.mjs                 # 18 项离线
+DSH_AOSP_NET=1 node dev/test.mjs  # 19 项，含一次真下载（external/zlib）
+node ../host-test/rt-aosp.mjs     # 10 项：引擎真 cordis 4.0.5 冒烟
 ```
 
 MIT

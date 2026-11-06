@@ -6,7 +6,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
-  fetchProject, listModules, search, readModuleFile, defaultRgPath, repoFor,
+  fetchProject, listModules, search, grepByModule, readModuleFile, defaultRgPath, repoFor,
 } from './lib/aosp.mjs';
 
 export const name = 'aosp';
@@ -109,6 +109,40 @@ export function apply(ctx, config = {}) {
         });
         if (!total) return { content: text(`没有匹配「${args?.pattern}」${args?.glob ? `（glob ${args.glob}）` : ''}。`) };
         return { content: text([`命中 ${total} 行${truncated ? `，只显示前 ${maxResults}` : ''}：`, '', ...hits].join('\n')) };
+      },
+    },
+    {
+      name: 'aosp_grep',
+      description: `跨模块正则搜索：一次 rg，结果按源码模块聚合（每个模块先给几条代表命中），适合「这个东西在哪几个模块里出现」。\n[${READ}; ${fyi}]`,
+      parameters: {
+        type: 'object',
+        properties: {
+          pattern: { type: 'string', description: 'ripgrep 正则' },
+          glob: { type: 'string', description: '限定文件，例如 *.java / *.cpp' },
+          modules: { type: 'array', items: { type: 'string' }, description: '只在这些模块里搜（默认全部）' },
+          maxPerModule: { type: 'number', description: '每个模块最多显示几条（默认 5）' },
+          context: { type: 'number', description: '上下文行数（0–5）' },
+          ignoreCase: { type: 'boolean', description: '忽略大小写' },
+        },
+        required: ['pattern'],
+      },
+      timeoutMs: 240_000,
+      isConcurrencySafe: () => true,
+      output: { schema: {}, render: renderer },
+      async execute(args) {
+        const maxPerModule = Math.min(Math.max(Number(args?.maxPerModule) || 5, 1), 20);
+        const res = await grepByModule({
+          root: rootDir, pattern: args?.pattern, rgPath, glob: args?.glob,
+          modules: Array.isArray(args?.modules) ? args.modules : null,
+          maxPerModule, context: Number(args?.context) || 0, ignoreCase: !!args?.ignoreCase,
+        });
+        if (!res.total) return { content: text(`没有匹配「${args?.pattern}」${args?.glob ? `（glob ${args.glob}）` : ''}。`) };
+        const lines = [`命中 ${res.total} 行，分布在 ${res.modules.length} 个模块：`];
+        for (const m of res.modules) {
+          lines.push('', `【${m.name}】${m.count} 行` + (m.hits.length < m.count ? `（显示前 ${m.hits.length}）` : ''));
+          for (const h of m.hits) lines.push('  ' + h);
+        }
+        return { content: text(lines.join('\n')) };
       },
     },
     {
