@@ -30,12 +30,17 @@ export function apply(ctx, config = {}) {
     {
       name: 'aosp_list',
       description: `列出本机已落地的 AOSP 源码模块（大小/文件数/来源 ref）。\n[${READ}; ${fyi}]`,
-      parameters: { type: 'object', properties: {} },
-      timeoutMs: 120_000,
+      parameters: {
+        type: 'object',
+        properties: {
+          refresh: { type: 'boolean', description: '重新统计每个模块的文件数/体积（默认用缓存，56k 文件重扫要好几分钟）' },
+        },
+      },
+      timeoutMs: 600_000,
       isConcurrencySafe: () => true,
       output: { schema: {}, render: renderer },
-      async execute() {
-        const { modules } = listModules(rootDir);
+      async execute(args) {
+        const { modules } = listModules(rootDir, { refresh: !!args?.refresh });
         if (!modules.length) return { content: text(`还没有任何模块。用 aosp_fetch 拉一个，例如 {"project":"frameworks/base"}。\n${fyi}`) };
         const total = modules.reduce((a, m) => a + m.bytes, 0);
         const lines = modules.map((m) =>

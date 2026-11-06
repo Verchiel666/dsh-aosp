@@ -18,7 +18,7 @@ packages/apps/*、system/core、bionic、build、external/* 等 100 个仓）。
 
 | 工具 | 风险 | 作用 |
 |---|---|---|
-| `aosp_list` | 只读 | 列出已落地的模块（大小/文件数/来源 ref） |
+| `aosp_list` | 只读 | 列出已落地的模块（大小/文件数/ref/sha）。**默认用缓存**，`refresh:true` 才重扫 |
 | `aosp_fetch` | 写盘 | 下载并解包一个项目；`ref` 可用分支或 tag（如 `android-14.0.0_r1`） |
 | `aosp_search` | 只读 | 用 ripgrep 在已落地源码里搜正则（可限定 `*.java`、带上下文） |
 | `aosp_grep` | 只读 | 跨模块正则：一次 rg，结果**按模块聚合**（"这东西在哪几个模块出现"） |
@@ -64,6 +64,13 @@ aosp_read    {"path":"frameworks_base/services/core/java/com/android/server/am/A
 4. 改动文件数超过上限（默认 300，正是 GitHub compare 的上限）→ 提示改用 `aosp_fetch force:true` 整包重下。
 
 注意：老版本落的模块（meta 里没有 sha）不能增量，会明确提示重下一次。
+
+**性能**：`aosp_list` 默认读 `.dsh-aosp.json` 里的缓存计数（**14 ms**）；强制重扫 56k 个文件要好几分钟，
+只有加 `refresh:true` 才会重扫。
+
+**耗时实测**（本机）：下载 24 MB/s 左右；解包 `frameworks/base`（56,733 文件 / 1.8 GB）要 **551 秒**，
+而 `packages/apps/Settings`（8,087 文件）只要 2.1 秒 —— **小文件越多、解包越慢**，tar 超时因此设成 30 分钟，
+下载失败会自动重试 3 次。
 
 ## 已知边界
 

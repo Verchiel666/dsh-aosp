@@ -46,6 +46,23 @@ try {
     assert.ok(modules[0].bytes > 0);
   });
 
+  await t('listModules 用 meta 里的缓存数（不重扫）', () => {
+    const meta = core.readMeta(root);
+    meta.modules.frameworks_base = { ...(meta.modules.frameworks_base || {}), files: 999, bytes: 123, project: 'frameworks/base' };
+    core.writeMeta(root, meta);
+    const { modules } = core.listModules(root);
+    const fb = modules.find((m) => m.name === 'frameworks_base');
+    assert.equal(fb.files, 999, '应直接用缓存里的 999');
+    assert.equal(fb.bytes, 123);
+  });
+
+  await t('listModules refresh:true 会重新统计', () => {
+    const { modules } = core.listModules(root, { refresh: true });
+    const fb = modules.find((m) => m.name === 'frameworks_base');
+    assert.equal(fb.files, 2, '真实就是 2 个文件');
+    assert.ok(fb.bytes > 0);
+  });
+
   await t('readModuleFile 带行号 + 分页', () => {
     const r = core.readModuleFile({ root, path: 'frameworks_base/core/Build.java', offset: 2, limit: 1 });
     assert.equal(r.total, 3);
