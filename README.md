@@ -1,5 +1,7 @@
 # dsh-aosp
 
+> English: [README.en.md](./README.en.md)
+
 [![npm](https://img.shields.io/npm/v/dsh-aosp.svg)](https://www.npmjs.com/package/dsh-aosp)
 [![license](https://img.shields.io/npm/l/dsh-aosp.svg)](LICENSE)
 
