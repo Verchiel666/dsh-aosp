@@ -6,7 +6,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
-  fetchProject, listModules, search, grepByModule, readModuleFile, defaultRgPath, repoFor,
+  fetchProject, listModules, search, grepByModule, readModuleFile, defaultRgPath, repoFor, updateModule,
 } from './lib/aosp.mjs';
 
 export const name = 'aosp';
@@ -39,7 +39,7 @@ export function apply(ctx, config = {}) {
         if (!modules.length) return { content: text(`还没有任何模块。用 aosp_fetch 拉一个，例如 {"project":"frameworks/base"}。\n${fyi}`) };
         const total = modules.reduce((a, m) => a + m.bytes, 0);
         const lines = modules.map((m) =>
-          `${m.name.padEnd(28)} ${mb(m.bytes).padStart(9)}  ${String(m.files).padStart(6)} 文件  ${m.ref ? '@' + m.ref : ''}`);
+          `${m.name.padEnd(28)} ${mb(m.bytes).padStart(9)}  ${String(m.files).padStart(6)} 文件  ${m.ref ? '@' + m.ref : ''}${m.sha ? ' #' + String(m.sha).slice(0, 7) : ''}`);
         return { content: text([`共 ${modules.length} 个模块 / ${mb(total)}`, '', ...lines, '', fyi].join('\n')) };
       },
     },
@@ -80,6 +80,45 @@ export function apply(ctx, config = {}) {
             `下载 ${mb(res.bytes)} / ${secs}s（${(res.bytes / 1024 / Math.max(res.ms / 1000, 0.01)).toFixed(0)} KB/s），解包后 ${mb(res.files ? res.bytes : res.bytes)}`.replace('解包后 ' + mb(res.bytes), `解包后 ${res.files} 个文件`),
             '',
             `搜索：aosp_search {"pattern":"class ActivityManagerService","glob":"*.java"}`,
+          ].join('\n')),
+        };
+      },
+    },
+    {
+      name: 'aosp_update',
+      description: `增量更新一个已落地模块：比对远端 commit，只下载改动/新增的文件（改名按改名处理，删除照删）。
+改动超过上限或没记录 sha 时，会提示改用 aosp_fetch 整包重下。
+[${WRITE}; ${fyi}]`,
+      parameters: {
+        type: 'object',
+        properties: {
+          module: { type: 'string', description: '本地模块目录名，例如 frameworks_base' },
+          project: { type: 'string', description: 'AOSP 项目路径（module 已存在记录时可省略）' },
+          ref: { type: 'string', description: '分支或 tag，默认 main' },
+          maxFiles: { type: 'number', description: '改动文件数上限，超过则回退整包（默认 300）' },
+        },
+        required: ['module'],
+      },
+      timeoutMs: 900_000,
+      isConcurrencySafe: () => false,
+      output: { schema: {}, render: renderer },
+      async execute(args) {
+        if (!args?.module) throw new Error('module 不能为空');
+        const notes = [];
+        const res = await updateModule({
+          project: args.project, ref: args.ref || 'main', root: rootDir, dest: args.module,
+          tarPath, maxFiles: Math.min(Math.max(Number(args.maxFiles) || 300, 1), 300),
+          onProgress: (m) => notes.push(m),
+        });
+        if (res.upToDate) return { content: text(`已是最新：${args.module} @ ${String(res.sha).slice(0, 7)}`) };
+        if (res.fallback) {
+          return { content: text([`需要整包重下：${res.reason}`, `aosp_fetch {"project":"${args.project || '(模块记录里的项目)'}","ref":"${args.ref || 'main'}","force":true}`].join('\n')) };
+        }
+        return {
+          content: text([
+            `✅ 增量更新 ${args.module} → ${String(res.sha).slice(0, 7)}`,
+            `本次改动 ${res.changed} 个文件：写入 ${res.written}、删除 ${res.removed}，下载 ${(res.downloadedBytes / 1024).toFixed(0)} KB`,
+            `当前目录 ${res.totalFiles} 个文件 / ${(res.totalBytes / 1048576).toFixed(1)} MB`,
           ].join('\n')),
         };
       },
@@ -190,13 +229,14 @@ export function apply(ctx, config = {}) {
     };
   }, 'aosp.tools');
 
-  // 只有 aosp_fetch 会写盘 → 走审批
+  // 会写盘的工具（fetch / update）走审批
+  const WRITE_TOOLS = new Set(['aosp_fetch', 'aosp_update']);
   ctx.on('tools/pre-execute', async (exec, next) => {
     const decision = await next();
-    if (exec.name !== 'aosp_fetch' || decision?.kind !== 'allow') return decision;
+    if (!WRITE_TOOLS.has(exec.name) || decision?.kind !== 'allow') return decision;
     let argsText = '';
     try { argsText = JSON.stringify(exec.arguments ?? {}); } catch {}
     if (argsText.length > 300) argsText = argsText.slice(0, 300) + '…';
-    return { kind: 'ask', reason: `aosp_fetch 要往本机下载并解包 AOSP 源码（可达数百 MB）：${argsText}` };
+    return { kind: 'ask', reason: `aosp_${exec.name === 'aosp_fetch' ? 'fetch 要往本机下载并解包 AOSP 源码（可达数百 MB）' : 'update 要按远端 commit 改写本地源码文件'}：${argsText}` };
   });
 }

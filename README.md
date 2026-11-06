@@ -22,6 +22,7 @@ packages/apps/*、system/core、bionic、build、external/* 等 100 个仓）。
 | `aosp_fetch` | 写盘 | 下载并解包一个项目；`ref` 可用分支或 tag（如 `android-14.0.0_r1`） |
 | `aosp_search` | 只读 | 用 ripgrep 在已落地源码里搜正则（可限定 `*.java`、带上下文） |
 | `aosp_grep` | 只读 | 跨模块正则：一次 rg，结果**按模块聚合**（"这东西在哪几个模块出现"） |
+| `aosp_update` | 写盘 | **增量更新**：比对远端 commit，只改动的文件（新增/修改/删除/改名） |
 | `aosp_read` | 只读 | 按行读源码文件（带行号，最多 400 行） |
 
 `aosp_fetch` 会走审批（写盘 + 可能几百 MB）。
@@ -34,6 +35,7 @@ aosp_fetch   {"project":"packages/apps/Settings","ref":"android-14.0.0_r1"}
 aosp_search  {"pattern":"class ActivityManagerService","glob":"*.java"}
 aosp_grep    {"pattern":"zygote_socket","maxPerModule":3}          # 按模块聚合
 aosp_grep    {"pattern":"IPCThreadState","glob":"*.cpp","modules":["system_core"]}
+aosp_update  {"module":"frameworks_base"}        # 增量更新（只下改动文件）
 aosp_read    {"path":"frameworks_base/services/core/java/com/android/server/am/ActivityManagerService.java","offset":520,"limit":40}
 ```
 
@@ -50,6 +52,19 @@ aosp_read    {"path":"frameworks_base/services/core/java/com/android/server/am/A
         rgPath: ''    # 默认 App 自带 bin/rg
 ```
 
+## 增量更新怎么工作
+
+`aosp_fetch` 会先解析 ref 的 commit sha，**按 sha 下包**（保证包内容与记录一致），并把 sha 写进
+`<root>/.dsh-aosp.json`。`aosp_update` 之后：
+
+1. 查远端 HEAD sha，一样就直接返回"已是最新"（零下载）；
+2. 不一样就调 GitHub compare API 拿改动清单；
+3. 对每个文件：删除的直接删，新增/修改/改名用 **jsDelivr**（`gcore.jsdelivr.net/gh/aosp-mirror/<repo>@<sha>/<path>`）
+   按 commit 取单文件，不需要重下整包；
+4. 改动文件数超过上限（默认 300，正是 GitHub compare 的上限）→ 提示改用 `aosp_fetch force:true` 整包重下。
+
+注意：老版本落的模块（meta 里没有 sha）不能增量，会明确提示重下一次。
+
 ## 已知边界
 
 - 镜像停在 2025-11-12（≈ Android 15/16），与最新 Android 有漂移；
@@ -60,8 +75,8 @@ aosp_read    {"path":"frameworks_base/services/core/java/com/android/server/am/A
 
 ```sh
 node dev/test.mjs                 # 18 项离线
-DSH_AOSP_NET=1 node dev/test.mjs  # 19 项，含一次真下载（external/zlib）
-node ../host-test/rt-aosp.mjs     # 10 项：引擎真 cordis 4.0.5 冒烟
+DSH_AOSP_NET=1 node dev/test.mjs  # 22 项，含真下载 + 真增量更新（回退 sha 再更新）
+node ../host-test/rt-aosp.mjs     # 12 项：引擎真 cordis 4.0.5 冒烟
 ```
 
 MIT

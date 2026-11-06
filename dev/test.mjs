@@ -82,7 +82,7 @@ try {
   });
 
   console.log('\n插件契约（假 ctx）');
-  await t('apply 注册 5 个工具', async () => {
+  await t('apply 注册 6 个工具', async () => {
     const registered = new Map();
     const ctx = {
       logger: () => ({ info() {}, warn() {} }),
@@ -91,7 +91,7 @@ try {
       tools: { register: (d) => { registered.set(d.name, d); return () => registered.delete(d.name); }, get: (n) => registered.get(n) },
     };
     plugin.apply(ctx, { rootDir: root });
-    assert.deepEqual([...registered.keys()].sort(), ['aosp_fetch', 'aosp_grep', 'aosp_list', 'aosp_read', 'aosp_search']);
+    assert.deepEqual([...registered.keys()].sort(), ['aosp_fetch', 'aosp_grep', 'aosp_list', 'aosp_read', 'aosp_search', 'aosp_update']);
     const list = await registered.get('aosp_list').execute({});
     assert.match(list.content[0].text, /frameworks_base/);
     const res = await registered.get('aosp_search').execute({ pattern: 'cc_library', glob: '*.bp' });
@@ -120,6 +120,34 @@ try {
       assert.ok(r.bytes > 100_000, `字节 ${r.bytes}`);
       const s = await core.search({ root, pattern: 'deflate|inflate', rgPath: core.defaultRgPath(homedir()), maxResults: 5 });
       assert.ok(s.total > 0);
+    await t('fetchProject 把 commit sha 记进 meta', async () => {
+      const meta = core.readMeta(root);
+      const m = meta.modules['external_zlib'];
+      assert.ok(m, '没有 external_zlib 记录');
+      assert.match(String(m.sha), /^[0-9a-f]{7,40}$/, 'sha 形如 ' + m.sha);
+    });
+
+    await t('没变化的模块 updateModule 判为最新', async () => {
+      const r = await core.updateModule({ project: 'external/zlib', root, dest: 'external_zlib' });
+      assert.equal(r.upToDate, true);
+    });
+
+    await t('把 meta 退回旧 sha 后能真增量更新', async () => {
+      const commits = await core.githubJson('/repos/aosp-mirror/platform_external_zlib/commits?per_page=3');
+      const older = commits[commits.length - 1].sha;
+      const meta = core.readMeta(root);
+      const headSha = meta.modules['external_zlib'].sha;
+      assert.notEqual(older, headSha, '需要一个更旧的 commit');
+      meta.modules['external_zlib'].sha = older;
+      core.writeMeta(root, meta);
+      const r = await core.updateModule({ project: 'external/zlib', root, dest: 'external_zlib' });
+      assert.equal(r.updated, true, JSON.stringify(r).slice(0, 200));
+      assert.equal(r.sha, headSha, '更新后应回到远端 HEAD');
+      assert.ok(r.changed >= 1);
+      assert.ok(r.written >= 1);
+    });
+
+
     });
   }
 } finally {
