@@ -140,8 +140,28 @@ try {
     assert.ok(r.results.every((x) => x.skipped), JSON.stringify(r.results));
   });
 
+  console.log('\n调用链追踪（合成树）');
+  await t('trace 能顺着 callees 展开两层', async () => {
+    mkdirSync(join(root, 'tr'), { recursive: true });
+    writeFileSync(join(root, 'tr', 'A.java'), 'class A {\n  void foo() {\n    bar();\n    baz(1);\n  }\n}\n');
+    writeFileSync(join(root, 'tr', 'B.java'), 'class B {\n  void bar() {\n    qux();\n  }\n  void baz(int x) {}\n  void qux() {}\n}\n');
+    const tr = await import('../lib/trace.mjs');
+    const r = await tr.trace({ root, symbol: 'foo', rgPath: core.defaultRgPath(homedir()), depth: 2, maxPerLevel: 4 });
+    const l1 = r.levels[1].nodes.map((n) => n.symbol);
+    assert.ok(l1.includes('bar') && l1.includes('baz'), JSON.stringify(l1));
+    const l2 = r.levels[2].nodes.map((n) => n.symbol);
+    assert.ok(l2.includes('qux'), JSON.stringify(l2));
+  });
+
+  await t('trace callers 能找到调用点', async () => {
+    const tr = await import('../lib/trace.mjs');
+    const r = await tr.trace({ root, symbol: 'bar', rgPath: core.defaultRgPath(homedir()), depth: 1, direction: 'callers' });
+    assert.ok(r.levels[1].nodes.length >= 1);
+    assert.ok(r.levels[1].nodes.some((n) => n.via.endsWith('A.java:3')), JSON.stringify(r.levels[1].nodes));
+  });
+
   console.log('\n插件契约（假 ctx）');
-  await t('apply 注册 8 个工具', async () => {
+  await t('apply 注册 9 个工具', async () => {
     const registered = new Map();
     const ctx = {
       logger: () => ({ info() {}, warn() {} }),
@@ -150,7 +170,7 @@ try {
       tools: { register: (d) => { registered.set(d.name, d); return () => registered.delete(d.name); }, get: (n) => registered.get(n) },
     };
     plugin.apply(ctx, { rootDir: root });
-    assert.deepEqual([...registered.keys()].sort(), ['aosp_fetch', 'aosp_grep', 'aosp_list', 'aosp_mirror', 'aosp_preset', 'aosp_read', 'aosp_search', 'aosp_update']);
+    assert.deepEqual([...registered.keys()].sort(), ['aosp_fetch', 'aosp_grep', 'aosp_list', 'aosp_mirror', 'aosp_preset', 'aosp_read', 'aosp_search', 'aosp_trace', 'aosp_update']);
     const list = await registered.get('aosp_list').execute({});
     assert.match(list.content[0].text, /frameworks_base/);
     const res = await registered.get('aosp_search').execute({ pattern: 'cc_library', glob: '*.bp' });

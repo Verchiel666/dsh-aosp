@@ -28,6 +28,7 @@ packages/apps/*、system/core、bionic、build、external/* 等 100 个仓）。
 | `aosp_search` | 只读 | 用 ripgrep 在已落地源码里搜正则（可限定 `*.java`、带上下文） |
 | `aosp_grep` | 只读 | 跨模块正则：一次 rg，结果**按模块聚合**（"这东西在哪几个模块出现"） |
 | `aosp_update` | 写盘 | **增量更新**：比对远端 commit，只改动的文件（新增/修改/删除/改名） |
+| `aosp_trace` | 只读 | 启发式调用链：给函数名，顺「它调了谁 / 谁调了它」钻 1–3 层（太通用的名字自动不展开） |
 | `aosp_read` | 只读 | 按行读源码文件（带行号，最多 400 行） |
 
 `aosp_fetch` 会走审批（写盘 + 可能几百 MB）。
@@ -41,6 +42,7 @@ aosp_search  {"pattern":"class ActivityManagerService","glob":"*.java"}
 aosp_grep    {"pattern":"zygote_socket","maxPerModule":3}          # 按模块聚合
 aosp_grep    {"pattern":"IPCThreadState","glob":"*.cpp","modules":["system_core"]}
 aosp_update  {"module":"frameworks_base"}        # 增量更新（只下改动文件）
+aosp_trace   {"symbol":"attachApplicationLocked","direction":"both","depth":2}
 aosp_read    {"path":"frameworks_base/services/core/java/com/android/server/am/ActivityManagerService.java","offset":520,"limit":40}
 ```
 

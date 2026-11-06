@@ -5,6 +5,7 @@
 // 所以走「tar 快照 → 系统 tar 解包 → rg 搜索」这条路。
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { trace as traceCalls } from './lib/trace.mjs';
 import {
   fetchProject, listModules, search, grepByModule, readModuleFile, defaultRgPath, repoFor, updateModule,
   listMirrorRepos, filterRepos, repoToPath, PRESETS, describePresets, fetchPreset,
@@ -188,6 +189,55 @@ ${READ}; 缓存 24h]`,
             `当前目录 ${res.totalFiles} 个文件 / ${(res.totalBytes / 1048576).toFixed(1)} MB`,
           ].join('\n')),
         };
+      },
+    },
+    {
+      name: 'aosp_trace',
+      description: `启发式调用链：给一个函数名，顺着「它调了谁」或「谁调了它」往下钻 1–3 层（rg + 花括号配对，不跑编译器）。
+[
+${READ}; 太通用的名字不会继续展开，避免刷屏]`,
+      parameters: {
+        type: 'object',
+        properties: {
+          symbol: { type: 'string', description: '函数/方法名，例如 startProcessLocked、handleBindApplication' },
+          direction: { type: 'string', description: 'callees（它调了谁，默认）/ callers（谁调了它）/ both' },
+          depth: { type: 'number', description: '展开层数 1–3（默认 2）' },
+          maxPerLevel: { type: 'number', description: '每层最多几个（默认 5，上限 10）' },
+          glob: { type: 'string', description: '限定文件，例如 *.java / *.cpp' },
+          includeTests: { type: 'boolean', description: '是否包含 tests 目录（默认排除）' },
+        },
+        required: ['symbol'],
+      },
+      timeoutMs: 300_000,
+      isConcurrencySafe: () => true,
+      output: { schema: {}, render: renderer },
+      async execute(args) {
+        const direction = ['callees', 'callers', 'both'].includes(args?.direction) ? args.direction : 'callees';
+        const depth = Math.min(Math.max(Number(args?.depth) || 2, 1), 3);
+        const maxPerLevel = Math.min(Math.max(Number(args?.maxPerLevel) || 5, 1), 10);
+        const res = await traceCalls({
+          root: rootDir, symbol: args?.symbol, rgPath, depth, direction, maxPerLevel,
+          glob: args?.glob || '*', includeTests: !!args?.includeTests,
+        });
+        const lines = [`跟踪 ${res.symbol}（方向 ${direction}，深度 ${depth}）`];
+        for (const lv of res.levels) {
+          const defs = lv.nodes.filter((n) => !n.kind || n.kind === 'definition');
+          const callees = lv.nodes.filter((n) => n.kind === 'callee');
+          const callers = lv.nodes.filter((n) => n.kind === 'caller');
+          const skipped = lv.nodes.filter((n) => n.kind === 'skipped-generic');
+          if (lv.level === 0) {
+            if (!defs.length) { lines.push('', '没找到定义——换个更完整的名字，或先 aosp_search 一下'); break; }
+            lines.push('', `L0 定义（${defs.length}）`);
+            for (const d of defs) lines.push(`  ${d.file}:${d.line}  ${String(d.text || '').slice(0, 90)}`);
+            continue;
+          }
+          lines.push('', `L${lv.level}（${lv.nodes.length - skipped.length} 条${skipped.length ? `，通用名未展开 ${skipped.length}` : ''}）`);
+          for (const n of callees.slice(0, maxPerLevel)) lines.push(`  ⇒ ${n.symbol}   ← ${n.via}`);
+          for (const n of callers.slice(0, maxPerLevel)) lines.push(`  ⇐ ${String(n.symbol).slice(0, 70)}   ← ${n.via}`);
+          if (skipped.length) lines.push(`  ·（未展开：${skipped.slice(0, 6).map((s) => s.symbol).join(', ')}${skipped.length > 6 ? '…' : ''}）`);
+        }
+        lines.push('', '启发式结果：按 rg 匹配 + 花括号配对展开，不是精确调用图（重载/反射/宏看不到）。');
+        return { content: text(lines.join('\n')) };
       },
     },
     {
