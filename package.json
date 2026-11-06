@@ -1,6 +1,6 @@
 {
   "name": "dsh-aosp",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "在 DSH 里直接拉 AOSP 源码快照并在本机用 ripgrep 搜代码：走 codeload tar 快照（github.com 不通也能用），无需 root、无需 git、不编译",
   "type": "module",
   "main": "index.mjs",

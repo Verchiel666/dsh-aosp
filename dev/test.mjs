@@ -117,8 +117,31 @@ try {
     assert.equal(r.total, 0);
   });
 
+  console.log('\n预设包');
+  await t('预设包定义完整（名称/描述/模块）', () => {
+    const ps = core.describePresets();
+    assert.ok(ps.length >= 4);
+    for (const p of ps) {
+      assert.ok(p.name && p.desc && p.modules.length >= 1);
+      assert.ok(core.PRESETS[p.name].modules.every(([proj]) => typeof proj === 'string'));
+    }
+    assert.ok(ps.some((p) => p.name === 'mini'));
+  });
+
+  await t('未知预设报错清楚', async () => {
+    await assert.rejects(() => core.fetchPreset({ name: 'nope', root }), /没有这个预设/);
+  });
+
+  await t('fetchPreset 对已存在的模块全部跳过（不打网络）', async () => {
+    mkdirSync(join(root, 'system_core'), { recursive: true });
+    mkdirSync(join(root, 'bionic'), { recursive: true });
+    const r = await core.fetchPreset({ name: 'mini', root });
+    assert.equal(r.results.length, 2);
+    assert.ok(r.results.every((x) => x.skipped), JSON.stringify(r.results));
+  });
+
   console.log('\n插件契约（假 ctx）');
-  await t('apply 注册 7 个工具', async () => {
+  await t('apply 注册 8 个工具', async () => {
     const registered = new Map();
     const ctx = {
       logger: () => ({ info() {}, warn() {} }),
@@ -127,7 +150,7 @@ try {
       tools: { register: (d) => { registered.set(d.name, d); return () => registered.delete(d.name); }, get: (n) => registered.get(n) },
     };
     plugin.apply(ctx, { rootDir: root });
-    assert.deepEqual([...registered.keys()].sort(), ['aosp_fetch', 'aosp_grep', 'aosp_list', 'aosp_mirror', 'aosp_read', 'aosp_search', 'aosp_update']);
+    assert.deepEqual([...registered.keys()].sort(), ['aosp_fetch', 'aosp_grep', 'aosp_list', 'aosp_mirror', 'aosp_preset', 'aosp_read', 'aosp_search', 'aosp_update']);
     const list = await registered.get('aosp_list').execute({});
     assert.match(list.content[0].text, /frameworks_base/);
     const res = await registered.get('aosp_search').execute({ pattern: 'cc_library', glob: '*.bp' });

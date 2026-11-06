@@ -7,7 +7,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   fetchProject, listModules, search, grepByModule, readModuleFile, defaultRgPath, repoFor, updateModule,
-  listMirrorRepos, filterRepos, repoToPath,
+  listMirrorRepos, filterRepos, repoToPath, PRESETS, describePresets, fetchPreset,
 } from './lib/aosp.mjs';
 
 export const name = 'aosp';
@@ -28,6 +28,40 @@ export function apply(ctx, config = {}) {
   const fyi = `源码根目录: ${rootDir}`;
 
   const tools = [
+    {
+      name: 'aosp_preset',
+      description: `预设包：一次拉一组相关模块（mini / apps / framework / core）。不带 name 时列出预设与本地已落地情况。
+[
+${WRITE}; ${fyi}]`,
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: '预设名：mini / apps / framework / core；留空只列出' },
+          force: { type: 'boolean', description: '已落地也重新下载' },
+        },
+      },
+      timeoutMs: 1_800_000,
+      isConcurrencySafe: () => false,
+      output: { schema: {}, render: renderer },
+      async execute(args) {
+        const landed = new Set(listModules(rootDir).modules.map((m) => m.name));
+        if (!args?.name) {
+          const lines = describePresets().map((p) => {
+            const mark = PRESETS[p.name].modules.map(([, d]) => (landed.has(d) ? '✔' : '·')).join('');
+            return `${p.name.padEnd(10)} ${mark.padEnd(6)} ${p.desc}`;
+          });
+          return { content: text([`预设（✔=已落地，·=未拉）：`, '', ...lines, '', '拉取：aosp_preset {"name":"mini"}', fyi].join('\n')) };
+        }
+        const res = await fetchPreset({ name: args.name, root: rootDir, tarPath, force: !!args.force });
+        const lines = [`预设 ${res.name}：${res.desc}`, ''];
+        for (const r of res.results) {
+          if (r.error) { lines.push(`❌ ${r.project}：${r.error}`); continue; }
+          if (r.skipped) { lines.push(`✔ ${r.project}（已存在，跳过）`); continue; }
+          lines.push(`✅ ${r.project} → ${r.dest}：${(r.files ? '' : '')}${r.files} 文件，解包 ${((r.extractMs || 0) / 1000).toFixed(1)}s，sha ${String(r.sha || '').slice(0, 7)}`);
+        }
+        return { content: text(lines.join('\n')) };
+      },
+    },
     {
       name: 'aosp_list',
       description: `列出本机已落地的 AOSP 源码模块（大小/文件数/来源 ref）。\n[${READ}; ${fyi}]`,
@@ -263,13 +297,13 @@ ${READ}; 缓存 24h]`,
   }, 'aosp.tools');
 
   // 会写盘的工具（fetch / update）走审批
-  const WRITE_TOOLS = new Set(['aosp_fetch', 'aosp_update']);
+  const WRITE_TOOLS = new Set(['aosp_fetch', 'aosp_update', 'aosp_preset']);
   ctx.on('tools/pre-execute', async (exec, next) => {
     const decision = await next();
     if (!WRITE_TOOLS.has(exec.name) || decision?.kind !== 'allow') return decision;
     let argsText = '';
     try { argsText = JSON.stringify(exec.arguments ?? {}); } catch {}
     if (argsText.length > 300) argsText = argsText.slice(0, 300) + '…';
-    return { kind: 'ask', reason: `aosp_${exec.name === 'aosp_fetch' ? 'fetch 要往本机下载并解包 AOSP 源码（可达数百 MB）' : 'update 要按远端 commit 改写本地源码文件'}：${argsText}` };
+    return { kind: 'ask', reason: `${exec.name} 要动本机源码目录（下载/解包/改写，可达数百 MB）：${argsText}` };
   });
 }
