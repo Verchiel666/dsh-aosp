@@ -1,6 +1,6 @@
 {
   "name": "dsh-aosp",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "在 DSH 里直接拉 AOSP 源码快照并在本机用 ripgrep 搜代码：走 codeload tar 快照（github.com 不通也能用），无需 root、无需 git、不编译",
   "type": "module",
   "main": "index.mjs",
@@ -47,5 +47,8 @@
     "url": "git+https://github.com/Verchiel666/dsh-aosp.git"
   },
   "homepage": "https://github.com/Verchiel666/dsh-aosp#readme",
-  "author": "Verchiel666"
+  "author": "Verchiel666",
+  "bugs": {
+    "url": "https://github.com/Verchiel666/dsh-aosp/issues"
+  }
 }

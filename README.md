@@ -1,5 +1,10 @@
 # dsh-aosp
 
+[![npm](https://img.shields.io/npm/v/dsh-aosp.svg)](https://www.npmjs.com/package/dsh-aosp)
+[![license](https://img.shields.io/npm/l/dsh-aosp.svg)](LICENSE)
+
+`npm i dsh-aosp` · [GitHub](https://github.com/Verchiel666/dsh-aosp) · [Issues](https://github.com/Verchiel666/dsh-aosp/issues)
+
 在 DSH 里直接**拉 AOSP 源码快照，并在手机上搜代码**——不需要 root、不需要 git、不编译。
 
 ## 为什么是这条路

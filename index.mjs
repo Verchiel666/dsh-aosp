@@ -7,6 +7,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   fetchProject, listModules, search, grepByModule, readModuleFile, defaultRgPath, repoFor, updateModule,
+  listMirrorRepos, filterRepos, repoToPath,
 } from './lib/aosp.mjs';
 
 export const name = 'aosp';
@@ -46,6 +47,33 @@ export function apply(ctx, config = {}) {
         const lines = modules.map((m) =>
           `${m.name.padEnd(28)} ${mb(m.bytes).padStart(9)}  ${String(m.files).padStart(6)} 文件  ${m.ref ? '@' + m.ref : ''}${m.sha ? ' #' + String(m.sha).slice(0, 7) : ''}`);
         return { content: text([`共 ${modules.length} 个模块 / ${mb(total)}`, '', ...lines, '', fyi].join('\n')) };
+      },
+    },
+    {
+      name: 'aosp_mirror',
+      description: `看 aosp-mirror 上到底有哪些仓（100 个，带体积和最后 push 时间），用来判断「某个项目能不能拉到」。
+[
+${READ}; 缓存 24h]`,
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '关键词过滤（仓库名或推导出的项目路径），例如 frameworks、bionic、Settings' },
+          limit: { type: 'number', description: '最多返回几条（默认 40，上限 100）' },
+          refresh: { type: 'boolean', description: '忽略 24h 缓存，重新拉清单' },
+        },
+      },
+      timeoutMs: 120_000,
+      isConcurrencySafe: () => true,
+      output: { schema: {}, render: renderer },
+      async execute(args) {
+        const { repos, cached } = await listMirrorRepos({
+          cacheFile: join(rootDir, '.aosp-mirror.json'), refresh: !!args?.refresh,
+        });
+        const hits = filterRepos(repos, args?.query, args?.limit);
+        if (!hits.length) return { content: text(`没有匹配「${args?.query}」的仓；共 ${repos.length} 个仓可用。`) };
+        const lines = hits.map((r) => `${repoToPath(r.name).padEnd(30)} ${String(r.mb).padStart(8)} MB  ${r.pushedAt ? r.pushedAt.slice(0, 10) : ''}`);
+        const head = `aosp-mirror 共 ${repos.length} 个仓${cached ? '（缓存）' : '（刚拉取）'}，匹配 ${hits.length} 条：`;
+        return { content: text([head, '', ...lines, '', '拉取：aosp_fetch {"project":"<左侧的项目路径>"}'].join('\n')) };
       },
     },
     {

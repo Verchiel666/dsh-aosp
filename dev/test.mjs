@@ -32,6 +32,25 @@ await t('正常相对路径可解析', () => assert.equal(core.safeJoin('/tmp/ro
 
 const root = mkdtempSync(join(tmpdir(), 'dsh-aosp-test-'));
 try {
+  console.log('\n镜像清单工具（纯函数）');
+  await t('repoToPath 推导项目路径', () => {
+    assert.equal(core.repoToPath('platform_frameworks_base'), 'frameworks/base');
+    assert.equal(core.repoToPath('platform_packages_apps_Settings'), 'packages/apps/Settings');
+    assert.equal(core.repoToPath('platform_bionic'), 'bionic');
+  });
+
+  await t('filterRepos 按关键词过滤 + 限量', () => {
+    const repos = [
+      { name: 'platform_frameworks_base', mb: 7898 },
+      { name: 'platform_bionic', mb: 54.6 },
+      { name: 'platform_system_core', mb: 214 },
+    ];
+    assert.equal(core.filterRepos(repos, 'framework').length, 1);
+    assert.equal(core.filterRepos(repos, 'system/core').length, 1);
+    assert.equal(core.filterRepos(repos, '').length, 3);
+    assert.equal(core.filterRepos(repos, '', 2).length, 2);
+  });
+
   console.log('\n本地读写');
   mkdirSync(join(root, 'frameworks_base', 'core'), { recursive: true });
   writeFileSync(join(root, 'frameworks_base', 'core', 'Build.java'),
@@ -99,7 +118,7 @@ try {
   });
 
   console.log('\n插件契约（假 ctx）');
-  await t('apply 注册 6 个工具', async () => {
+  await t('apply 注册 7 个工具', async () => {
     const registered = new Map();
     const ctx = {
       logger: () => ({ info() {}, warn() {} }),
@@ -108,7 +127,7 @@ try {
       tools: { register: (d) => { registered.set(d.name, d); return () => registered.delete(d.name); }, get: (n) => registered.get(n) },
     };
     plugin.apply(ctx, { rootDir: root });
-    assert.deepEqual([...registered.keys()].sort(), ['aosp_fetch', 'aosp_grep', 'aosp_list', 'aosp_read', 'aosp_search', 'aosp_update']);
+    assert.deepEqual([...registered.keys()].sort(), ['aosp_fetch', 'aosp_grep', 'aosp_list', 'aosp_mirror', 'aosp_read', 'aosp_search', 'aosp_update']);
     const list = await registered.get('aosp_list').execute({});
     assert.match(list.content[0].text, /frameworks_base/);
     const res = await registered.get('aosp_search').execute({ pattern: 'cc_library', glob: '*.bp' });
@@ -137,6 +156,12 @@ try {
       assert.ok(r.bytes > 100_000, `字节 ${r.bytes}`);
       const s = await core.search({ root, pattern: 'deflate|inflate', rgPath: core.defaultRgPath(homedir()), maxResults: 5 });
       assert.ok(s.total > 0);
+    await t('真拉一次镜像清单（约 100 个仓）', async () => {
+      const { repos } = await core.listMirrorRepos({ cacheFile: join(root, '.aosp-mirror.json'), refresh: true });
+      assert.ok(repos.length >= 90, '仓数 ' + repos.length);
+      assert.ok(repos[0].mb > 100, '最大仓 ' + repos[0].name + ' ' + repos[0].mb);
+    });
+
     await t('fetchProject 把 commit sha 记进 meta', async () => {
       const meta = core.readMeta(root);
       const m = meta.modules['external_zlib'];
