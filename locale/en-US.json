@@ -1,0 +1,7 @@
+{
+  "aosp.name": "AOSP sources",
+  "aosp.list": "List downloaded AOSP modules",
+  "aosp.fetch": "Download and unpack an AOSP project",
+  "aosp.search": "Regex search across sources",
+  "aosp.read": "Read a source file by line"
+}

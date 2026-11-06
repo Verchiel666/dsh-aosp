@@ -1,0 +1,7 @@
+{
+  "aosp.name": "AOSP 源码",
+  "aosp.list": "列出已落地的源码模块",
+  "aosp.fetch": "下载并解包一个 AOSP 项目",
+  "aosp.search": "在源码里搜正则",
+  "aosp.read": "按行读源码文件"
+}

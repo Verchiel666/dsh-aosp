@@ -1,0 +1,9 @@
+# 把本插件插进 profile 的层栈。安装后重启引擎生效。
+- insert:
+    - id: aosp
+      name: dsh-aosp
+      config:
+        # 源码落地目录：默认 $HOME/work/aosp-src（和手工那份共用）
+        rootDir: ''
+        # ripgrep 路径：默认用 App 自带 bin/rg，找不到则用 PATH 里的 rg
+        rgPath: ''
