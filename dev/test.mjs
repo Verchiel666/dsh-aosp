@@ -160,6 +160,18 @@ try {
     assert.ok(r.levels[1].nodes.some((n) => n.via.endsWith('A.java:3')), JSON.stringify(r.levels[1].nodes));
   });
 
+  await t('callers 能往上爬到外层函数', async () => {
+    const tr = await import('../lib/trace.mjs');
+    mkdirSync(join(root, 'tr'), { recursive: true });
+    writeFileSync(join(root, 'tr', 'C.java'),
+      'class C {\n  void outer() {\n    mid();\n  }\n  void mid() {\n    bar();\n  }\n}\n');
+    const r = await tr.trace({ root, symbol: 'bar', rgPath: core.defaultRgPath(homedir()), depth: 1, direction: 'callers' });
+    const names = r.levels[1].nodes.map((n) => n.symbol);
+    assert.ok(names.includes('mid()'), JSON.stringify(names));
+    const r2 = await tr.trace({ root, symbol: 'bar', rgPath: core.defaultRgPath(homedir()), depth: 2, direction: 'callers' });
+    assert.ok(r2.levels.length >= 3, 'levels=' + r2.levels.length);
+  });
+
   console.log('\n插件契约（假 ctx）');
   await t('apply 注册 9 个工具', async () => {
     const registered = new Map();
